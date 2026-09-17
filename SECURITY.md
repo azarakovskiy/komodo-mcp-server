@@ -31,7 +31,9 @@ I release security updates for the latest version (main branch) only. Please kee
 - **Authentication on by default** for HTTP/HTTPS - each user signs in and acts as their own Komodo
   identity with their own permissions, never a shared account.
 - **Open servers are read-only**: if you disable authentication on a network transport, only read
-  tools are available - write, delete and terminal tools are hidden and refused.
+  tools are available - write, delete and terminal tools are hidden and refused. The one exception
+  is the explicit `MCP_ALLOW_SHARED_CREDENTIAL_WRITES` opt-in for unattended service-account
+  clients, which is off by default and must be paired with a least-privilege Komodo service user.
 - **Per-resource permission checks** run before every action, enforced against the user's Komodo
   permissions.
 - **Confirmation for destructive actions** (delete, destroy, prune, terminal commands, and

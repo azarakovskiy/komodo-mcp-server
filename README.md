@@ -182,6 +182,13 @@ logs in with their own Komodo username and password and gets their own session w
 permissions. Turn it off with `MCP_AUTH_ENABLED=false` (an open network server is then read-only);
 `stdio` is local and never authenticated.
 
+**Unattended clients without a browser or token** can stay on an auth-disabled server with
+`MCP_ALLOW_SHARED_CREDENTIAL_WRITES=true`: anonymous callers then get the full tool surface as the
+shared Komodo identity (the API key above) - the same behaviour `stdio` has. It is ignored while auth
+is enabled and fails closed to read-only when no shared credentials are set. Treat the endpoint as
+that identity: use a least-privilege Komodo service user and keep it on a trusted network. See
+[Unattended Shared-Credential Access](config/README.md#unattended-shared-credential-access).
+
 For the full configuration reference (env vars, config files, Docker secrets), see the **[Configuration Guide](config/README.md)**.
 
 ## Troubleshooting
@@ -191,7 +198,7 @@ For the full configuration reference (env vars, config files, Docker secrets), s
 **401 Unauthorized when a client connects (HTTP).** Since 1.5.0, authentication defaults **on** for HTTP/HTTPS, so clients must sign in (browser login against your Komodo username/password). Either complete the login, or set `MCP_AUTH_ENABLED=false` to run without it. A 401 *after* login usually means the Komodo credentials are wrong or the account is disabled. (stdio is local and never requires this.)
 
 **Tools are missing from the list.** Two causes, both by design:
-- **Read-only mode.** If you disabled auth (`MCP_AUTH_ENABLED=false`) on an HTTP/HTTPS transport, the server is read-only for anonymous callers — every write/exec/delete tool (incl. `komodo_exec`) is hidden and rejected. Enable `[auth]` (per-user login) to get them back. Startup logs a `READ-ONLY` notice when this is active.
+- **Read-only mode.** If you disabled auth (`MCP_AUTH_ENABLED=false`) on an HTTP/HTTPS transport, the server is read-only for anonymous callers — every write/exec/delete tool (incl. `komodo_exec`) is hidden and rejected. Enable `[auth]` (per-user login) to get them back, or set `MCP_ALLOW_SHARED_CREDENTIAL_WRITES=true` for unattended access as the shared service identity. Startup logs a `READ-ONLY` notice when this is active.
 - **Tool-surface filter.** `MCP_TOOLS_ALLOWED_CATEGORIES`, `MCP_TOOLS_EXCLUDED_CATEGORIES`, or `MCP_TOOLS_EXCLUDED_TOOLS` prune the registered set. Unset all three to expose everything. A bad category name is ignored with a startup warning listing the valid categories.
 
 ## Disclaimer

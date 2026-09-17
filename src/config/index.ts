@@ -19,7 +19,8 @@ export { VALIDATION_LIMITS, CONTAINER_LOGS_DEFAULTS, LOG_SEARCH_DEFAULTS } from 
 
 // Tool metadata (categories + scopes)
 export { ToolCategories, type ToolCategory } from "./categories.js";
-export { ToolScopes, type ToolScope } from "./scopes.js";
+export { ToolScopes, resolveAnonymousAccess } from "./scopes.js";
+export type { ToolScope, AnonymousAccess, AnonymousAccessInput, AnonymousAccessNotice } from "./scopes.js";
 
 // Descriptions
 export {

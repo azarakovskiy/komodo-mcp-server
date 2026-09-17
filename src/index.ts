@@ -31,6 +31,7 @@ import {
   config,
   getKomodoCredentials,
   resolveKomodoConfig,
+  resolveAnonymousAccess,
   ToolScopes,
   ToolCategories,
 } from "./config/index.js";
@@ -190,28 +191,75 @@ if (authActive) {
 // connection; authenticated HTTP resolves a per-user client from each request's JWT.
 const anonymousMode = !authConfig;
 
-// Open network deployment (http OR https, no per-user auth) ⇒ READ-ONLY, as an invariant.
+// Open network deployment (http OR https, no per-user auth) ⇒ READ-ONLY by default.
 // Anonymous requests are granted only the READ scope, so the framework hides and rejects
 // every write/operate/exec/delete tool (komodo:operate / komodo:admin). This bounds the blast
-// radius of a misconfigured open server to reads; the only way to get write access over the
-// network is to enable [auth]. stdio (httpMode === false) is local & trusted ⇒ unrestricted.
-const anonymousScopes = httpMode && anonymousMode ? [ToolScopes.READ] : undefined;
+// radius of a misconfigured open server to reads. Two ways to write over the network: enable
+// [auth] (per-user identities), or — for unattended service-account deployments that cannot
+// log in — opt in with MCP_ALLOW_SHARED_CREDENTIAL_WRITES, which needs the shared credentials
+// to act as and is ignored whenever [auth] is active. stdio (httpMode === false) is local &
+// trusted ⇒ unrestricted. See resolveAnonymousAccess() for the full decision table.
+const hasSharedCredentials = resolveAuth(startupCreds) !== null;
+const access = resolveAnonymousAccess({
+  httpMode,
+  authEnabled: authActive,
+  allowSharedCredentialWrites: config.MCP_ALLOW_SHARED_CREDENTIAL_WRITES,
+  hasSharedCredentials,
+});
+const anonymousScopes = access.scopes;
 
-// Security notice: an open network server backed by shared global credentials is now read-only.
-// Not applicable to stdio (one local user).
-if (anonymousScopes && resolveAuth(startupCreds) !== null) {
-  logger.warn(
-    "SECURITY: MCP authentication is disabled — this %s server is READ-ONLY. Write, exec and delete tools are " +
-      "hidden and rejected for anonymous callers; reads act as the shared global identity. Enable [auth] for " +
-      "per-user write access.",
-    transportMode,
-  );
-  logAuditEvent({
-    category: "config",
-    action: "restricted_anonymous",
-    outcome: "info",
-    detail: { transport: transportMode, grantedScopes: [ToolScopes.READ] },
-  });
+switch (access.notice) {
+  case "read_only":
+    // Security notice: an open network server backed by shared global credentials is read-only.
+    // Silent without credentials — client.ts already warns that tools are unavailable then.
+    if (hasSharedCredentials) {
+      logger.warn(
+        "SECURITY: MCP authentication is disabled — this %s server is READ-ONLY. Write, exec and delete tools are " +
+          "hidden and rejected for anonymous callers; reads act as the shared global identity. Enable [auth] for " +
+          "per-user write access.",
+        transportMode,
+      );
+      logAuditEvent({
+        category: "config",
+        action: "restricted_anonymous",
+        outcome: "info",
+        detail: { transport: transportMode, grantedScopes: [ToolScopes.READ] },
+      });
+    }
+    break;
+
+  case "opt_in_active":
+    logger.warn(
+      "SECURITY: MCP_ALLOW_SHARED_CREDENTIAL_WRITES is enabled — this %s server grants *unauthenticated* callers the " +
+        "full tool surface (write, exec, delete) as the shared Komodo identity. Anyone who can reach the endpoint has " +
+        "that identity's Komodo permissions. Set MCP_AUTH_ENABLED=true for per-user access, or unset the flag to " +
+        "return to read-only.",
+      transportMode,
+    );
+    logAuditEvent({
+      category: "config",
+      action: "open_full_access",
+      outcome: "info",
+      detail: { transport: transportMode, reason: "anonymous_shared_credential_writes" },
+    });
+    break;
+
+  case "opt_in_ignored_auth_enabled":
+    logger.warn(
+      "MCP_ALLOW_SHARED_CREDENTIAL_WRITES is set but MCP authentication is enabled — ignoring it. Anonymous callers " +
+        "are not granted anything; every request must present a per-user token.",
+    );
+    break;
+
+  case "opt_in_no_credentials":
+    logger.error(
+      "SECURITY: MCP_ALLOW_SHARED_CREDENTIAL_WRITES is set but no shared Komodo credentials are configured — failing " +
+        "closed to READ-ONLY. Set KOMODO_API_KEY/KOMODO_API_SECRET (or another credential pair) to enable it.",
+    );
+    break;
+
+  case "none":
+    break;
 }
 
 // ============================================================================
@@ -285,8 +333,9 @@ const { start } = createServer({
   // dynamic-resource registry above.
   scrubToolResults: scrubOptions,
 
-  // Open network deployment ⇒ read-only: anonymous callers get only the READ scope,
-  // so operate/exec/delete tools are hidden from tools/list and rejected on call.
+  // Open network deployment ⇒ read-only unless explicitly opted in: anonymous callers get
+  // only the READ scope, so operate/exec/delete tools are hidden from tools/list and rejected
+  // on call. Omitted entirely (unrestricted) for stdio and for the shared-credential opt-in.
   ...(anonymousScopes && { anonymousScopes }),
 
   // Operator tool-surface pruning (context/token) — subtractive, never bypasses scope gating.

@@ -197,6 +197,27 @@ enabled = true
 ## Komodo username/password login automatically.
 
 
+##############################################
+## ANONYMOUS ACCESS (auth-disabled servers) ##
+##############################################
+
+## Opt-in for UNATTENDED service-account access over the network. Normally an auth-disabled
+## network transport is READ-ONLY for anonymous callers; with this enabled they get the full
+## tool surface (write, exec, delete) as the shared [komodo] identity - exactly like stdio.
+## Needed when a client cannot complete a browser login and cannot hold a token.
+##
+## Ignored when [auth] is enabled. Fails closed to read-only when no shared Komodo credentials
+## are configured. Security: every client that can reach the endpoint gets that identity's
+## Komodo permissions - use a least-privilege Komodo service user and a trusted network.
+
+[access]
+
+## Allow anonymous write/exec/delete access as the shared Komodo identity (unattended clients).
+## Env: MCP_ALLOW_SHARED_CREDENTIAL_WRITES
+## Default: false
+allow_shared_credential_writes = false
+
+
 ##############
 ## SECURITY ##
 ##############

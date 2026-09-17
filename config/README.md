@@ -9,7 +9,7 @@ The server is configured through **environment variables**, a **config file** (T
 Since 1.5.0 the server is **secure by default**:
 
 - **Authentication is on by default** for `http`/`https`. Clients sign in (browser username/password against Komodo), and each user acts as their **own** Komodo identity with their own permissions - never a shared account. Turn it off with `MCP_AUTH_ENABLED=false`.
-- **An open network server is read-only.** If you disable auth on `http`/`https`, anonymous callers get **read-only** access - every write/exec/delete tool (including `komodo_exec`) is hidden and rejected. The only way to write over the network is to enable auth. **stdio** is local and always fully capable.
+- **An open network server is read-only.** If you disable auth on `http`/`https`, anonymous callers get **read-only** access - every write/exec/delete tool (including `komodo_exec`) is hidden and rejected. Write access over the network requires auth, or the explicit unattended-service-account opt-in below. **stdio** is local and always fully capable.
 - **Fail-closed on misconfiguration.** If auth is on but no Komodo URL/credentials are configured, the server rejects every request instead of running open.
 - **Per-resource permission checks.** Authenticated calls verify the user's Komodo permission on the target resource *before* running.
 - **Destructive actions ask first.** Deletes, `destroy`, prune, `komodo_exec`, and procedure/action/sync runs require explicit confirmation in the client (MCP elicitation), fail-closed.
@@ -189,10 +189,35 @@ permission-checked on Komodo before it runs.
 
 **Disabled (`MCP_AUTH_ENABLED=false`) on a network transport:** the server runs **read-only** for
 anonymous callers - write/exec/delete tools (including `komodo_exec`) are hidden from `tools/list`
-and rejected on call. Enable auth to allow write access. `stdio` is unaffected (fully capable).
+and rejected on call. Enable auth to allow write access, or use the opt-in below. `stdio` is
+unaffected (fully capable).
 
 > External OAuth providers (`[auth.providers.*]` - Google/GitHub/OIDC) are reserved for upcoming
 > work and not wired in yet; enabling auth today offers local Komodo login.
+
+### Unattended Shared-Credential Access
+
+Some clients cannot sign in through a browser and cannot hold a session token - a scheduled agent,
+for example. For those, an auth-disabled server can be told to let anonymous callers use the full
+tool surface as the shared `[komodo]` identity (same behaviour as `stdio`):
+
+| Variable | Config Key | Default | Description |
+|----------|-----------|---------|-------------|
+| `MCP_ALLOW_SHARED_CREDENTIAL_WRITES` | `access.allow_shared_credential_writes` | `false` | Allow anonymous write/exec/delete access as the shared Komodo identity on an auth-disabled transport |
+
+- Takes effect **only** when auth is disabled on a network transport; with `MCP_AUTH_ENABLED=true`
+  it is ignored (a startup warning says so).
+- **Fails closed**: with no shared credentials configured it stays read-only (startup error), since
+  there is no identity to act as.
+- Startup logs a `SECURITY: MCP_ALLOW_SHARED_CREDENTIAL_WRITES is enabled ...` warning and writes a
+  `config.open_full_access` audit event whenever it is in effect.
+- Destructive tools still ask for confirmation (see [Destructive-Action Confirmation](#destructive-action-confirmation)) -
+  unattended clients that cannot answer a prompt need `MCP_CONFIRM_FALLBACK=allow`.
+
+> **Blast radius.** Anyone who can reach the endpoint acts with that API key's Komodo permissions.
+> Use a dedicated, least-privilege Komodo service user, restrict the endpoint to a trusted network
+> (reverse-proxy allowlists, VPN/Tailscale, firewall), and prefer enabling auth wherever a browser
+> login is possible.
 
 ## Transport & Network
 

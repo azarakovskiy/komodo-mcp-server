@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 --------------------------------------------------------------
+## [1.6.0]
+
+### Added
+
+- **Unattended service-account access over the network.** New opt-in
+  `MCP_ALLOW_SHARED_CREDENTIAL_WRITES` (`[access].allow_shared_credential_writes`, default `false`).
+  On an auth-disabled `http`/`https` server, anonymous callers can now be granted the full tool
+  surface - writes, exec, deletes - acting as the shared `[komodo]` identity, exactly like `stdio`.
+  This keeps clients connected that cannot complete a browser login and cannot hold a token, such as
+  scheduled agents. Ignored while authentication is enabled; fails closed to read-only when no shared
+  credentials are configured; startup logs a security warning and a `config.open_full_access` audit
+  event while it is in effect.
+- **Destructive tools still confirm.** The opt-in does not bypass [destructive-action confirmation](config/README.md#destructive-action-confirmation) -
+  unattended clients that cannot answer an elicitation prompt need `MCP_CONFIRM_FALLBACK=allow`.
+
+> **Security note:** with this flag an open server is no longer bounded to reads - every client that
+> can reach the endpoint gets the Komodo permissions of the configured API key. Use a dedicated,
+> least-privilege Komodo service user and restrict the endpoint to a trusted network.
+
+--------------------------------------------------------------
 ## [1.5.0]
 
 The main themes: **sign in with your own Komodo account**, **secure by default** over the network,

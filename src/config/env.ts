@@ -163,6 +163,21 @@ export const appEnvSchema = z.object({
 
   /** Comma-separated individual tool names to remove (e.g. `komodo_exec`). */
   MCP_TOOLS_EXCLUDED_TOOLS: csvList(),
+
+  // ── Anonymous network access (MCP-server security) ─────────────────────────
+
+  /**
+   * Opt-in escape hatch for unattended service-account deployments: an HTTP/HTTPS
+   * server with authentication disabled (`MCP_AUTH_ENABLED=false`) normally runs
+   * READ-ONLY for anonymous callers. With this flag (and configured shared Komodo
+   * credentials) anonymous callers instead act as the shared Komodo identity with its
+   * full tool surface — exactly like stdio. Ignored when auth is enabled, and fails
+   * closed to read-only if no shared credentials are configured.
+   *
+   * Security: every client that can reach the endpoint gets that identity's Komodo
+   * permissions. Only the string "true" enables it. Default: false
+   */
+  MCP_ALLOW_SHARED_CREDENTIAL_WRITES: booleanFromEnv(false),
 });
 
 export type AppEnvConfig = z.infer<typeof appEnvSchema>;
@@ -197,6 +212,7 @@ function fileSectionOverrides(): Record<string, string> {
   const tools = getAppConfig<ToolsFileConfig>("tools");
   const redaction = getAppConfig<RedactionFileConfig>("redaction");
   const resources = getAppConfig<ResourcesFileConfig>("resources");
+  const access = getAppConfig<AccessFileConfig>("access");
 
   const overrides: Record<string, string> = {};
   const put = (envKey: string, value: string | number | boolean | readonly string[] | undefined): void => {
@@ -217,6 +233,7 @@ function fileSectionOverrides(): Record<string, string> {
   put("MCP_RESOURCE_TTL_INFO", resources?.ttl_info);
   put("MCP_RESOURCE_TTL_LOGS", resources?.ttl_logs);
   put("MCP_RESOURCE_MAX_ENTRIES", resources?.max_entries);
+  put("MCP_ALLOW_SHARED_CREDENTIAL_WRITES", access?.allow_shared_credential_writes);
   return overrides;
 }
 
@@ -340,16 +357,26 @@ const redactionConfigFileSchema = z.object({
 const resourcesConfigFileSchema = z.object({
   /** TTL for info/inspect resources as duration ('15m') or ms. Env: MCP_RESOURCE_TTL_INFO */
   ttl_info: z.union([z.number().int().positive(), z.string()]).optional(),
-  /** TTL for log resources as duration ('2m') or ms. Env: MCP_RESOURCE_TTL_LOGS */
+  /** TTL for logs resources as duration ('2m') or ms. Env: MCP_RESOURCE_TTL_LOGS */
   ttl_logs: z.union([z.number().int().positive(), z.string()]).optional(),
   /** Maximum ephemeral entries kept in memory. Env: MCP_RESOURCE_MAX_ENTRIES */
   max_entries: z.number().int().positive().optional(),
+});
+
+/** `[access]` — anonymous network access (env `MCP_ALLOW_SHARED_CREDENTIAL_WRITES`). */
+const accessConfigFileSchema = z.object({
+  /**
+   * Allow anonymous write/exec/delete access on an auth-disabled network transport,
+   * acting as the shared Komodo service identity. Env: MCP_ALLOW_SHARED_CREDENTIAL_WRITES
+   */
+  allow_shared_credential_writes: z.boolean().optional(),
 });
 
 export type KomodoFileConfig = z.infer<typeof komodoConfigFileSchema>;
 type ToolsFileConfig = z.infer<typeof toolsConfigFileSchema>;
 type RedactionFileConfig = z.infer<typeof redactionConfigFileSchema>;
 type ResourcesFileConfig = z.infer<typeof resourcesConfigFileSchema>;
+type AccessFileConfig = z.infer<typeof accessConfigFileSchema>;
 
 /**
  * Register all app config-file sections with the framework.
@@ -362,4 +389,5 @@ export function registerKomodoConfigSection(): void {
   registerConfigSection("tools", toolsConfigFileSchema);
   registerConfigSection("redaction", redactionConfigFileSchema);
   registerConfigSection("resources", resourcesConfigFileSchema);
+  registerConfigSection("access", accessConfigFileSchema);
 }
